@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import AuditInput from './components/AuditInput';
 import AuditResults from './components/AuditResults';
 import HistoryAudit from './components/HistoryAudit';
+import PublicAudits from './components/PublicAudits';
 
 const STORAGE_KEY = 'hfa-audit-history';
 
@@ -14,7 +15,7 @@ const App: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [auditHistory, setAuditHistory] = useState<AuditResult[]>([]);
   const [selectedAudit, setSelectedAudit] = useState<AuditResult | null>(null);
-  const [currentMode, setCurrentMode] = useState<'input' | 'history'>('input');
+  const [currentMode, setCurrentMode] = useState<'input' | 'history' | 'public'>('input');
   
   // Input state
   const [text, setText] = useState('');
@@ -22,6 +23,32 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AuditResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Debug sidebar state changes
+  useEffect(() => {
+    console.log('App: Sidebar state changed to:', sidebarOpen);
+  }, [sidebarOpen]);
+
+  // Handle window resize to ensure responsive behavior works
+  useEffect(() => {
+    const handleResize = () => {
+      console.log('Window resized, current sidebar state:', sidebarOpen);
+      // Force a re-render check when window is resized
+      // This helps with responsive CSS issues
+      if (window.innerWidth >= 1024 && !sidebarOpen) {
+        // On desktop, sidebar should be open by default
+        console.log('Desktop detected, ensuring sidebar state is correct');
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    // Trigger once on mount to check initial state
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [sidebarOpen]);
 
   // Load audit history from localStorage on mount
   useEffect(() => {
@@ -51,44 +78,24 @@ const App: React.FC = () => {
       setCurrentMode('input');
       setSelectedAudit(null); // Clear any selected audit
 
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Generate mock audit result
-      const mockResult: AuditResult = {
-        id: `audit-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        context: context,
-        originalText: text,
-        overallScore: Math.floor(Math.random() * 30) + 70, // Random score between 70-100
-        dimensionScores: {
-          safety: Math.floor(Math.random() * 30) + 70,
-          hallucination: Math.floor(Math.random() * 30) + 70,
-          bias: Math.floor(Math.random() * 30) + 70,
-          reliability: Math.floor(Math.random() * 30) + 70,
-          compliance: Math.floor(Math.random() * 30) + 70,
+      const response = await fetch('http://localhost:4000/api/audit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        issues: [
-          {
-            id: 'issue-1',
-            type: 'safety',
-            severity: 'medium',
-            description: 'Contains a potential safety concern that should be reviewed.',
-            snippet: text.substring(0, 80) + (text.length > 80 ? '...' : ''),
-          },
-          {
-            id: 'issue-2',
-            type: 'bias',
-            severity: 'low',
-            description: 'Minor bias concern detected in the content.',
-          },
-        ],
-      };
+        body: JSON.stringify({ text, context }),
+      });
 
-      setResult(mockResult);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || `Server error: ${response.status}`);
+      }
+
+      const data: AuditResult = await response.json();
+      setResult(data);
       
       // Add to history
-      const updatedHistory = [mockResult, ...auditHistory];
+      const updatedHistory = [data, ...auditHistory];
       setAuditHistory(updatedHistory);
       
       // Clear the input after successful audit
@@ -96,7 +103,17 @@ const App: React.FC = () => {
       
     } catch (err: any) {
       console.error('Audit error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      
+      // Check for network/connection errors
+      let errorMessage = 'Unable to connect to the server.';
+      
+      if (err.name === 'TypeError' && err.message.includes('Failed to fetch')) {
+        errorMessage = 'Cannot connect to the server. Please make sure the backend server is running on port 4000.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -110,6 +127,19 @@ const App: React.FC = () => {
     setSidebarOpen(false);
   };
 
+  const handleImproveText = (improvedText: string) => {
+    if (result) {
+      const updatedResult = { ...result, improvedText };
+      setResult(updatedResult);
+      
+      // Update in history
+      const updatedHistory = auditHistory.map(audit =>
+        audit.id === result.id ? updatedResult : audit
+      );
+      setAuditHistory(updatedHistory);
+    }
+  };
+
   const handleSelectAudit = (audit: AuditResult) => {
     setSelectedAudit(audit);
     setResult(null);
@@ -118,17 +148,34 @@ const App: React.FC = () => {
   };
 
   const handleToggleSidebar = () => {
+    console.log('App: Toggle sidebar, current state:', sidebarOpen);
     setSidebarOpen(!sidebarOpen);
+  };
+
+  const handleCloseSidebar = () => {
+    console.log('App: Close sidebar called, current state:', sidebarOpen);
+    setSidebarOpen(false);
   };
 
   return (
     <div className="app">
-      <Navbar onNewAudit={handleNewAudit} onToggleSidebar={handleToggleSidebar} />
+      <Navbar 
+        onNewAudit={handleNewAudit} 
+        onToggleSidebar={handleToggleSidebar}
+        currentMode={currentMode}
+        onModeChange={(mode) => {
+          setCurrentMode(mode);
+          if (mode === 'input') {
+            setSelectedAudit(null);
+            setResult(null);
+          }
+        }}
+      />
       
       <div className="app-body">
         <Sidebar
           isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
+          onClose={handleCloseSidebar}
           auditHistory={auditHistory}
           onSelectAudit={handleSelectAudit}
           selectedAuditId={selectedAudit?.id || null}
@@ -136,7 +183,11 @@ const App: React.FC = () => {
         />
 
         <main className="main-content">
-          {currentMode === 'input' ? (
+          {currentMode === 'public' ? (
+            <div className="public-audits-container">
+              <PublicAudits />
+            </div>
+          ) : currentMode === 'input' ? (
             <div className="chat-container">
               <div className="chat-messages-area">
                 {!result && !loading && !error && (
@@ -164,7 +215,7 @@ const App: React.FC = () => {
                 {result && (
                   <div className="chat-message assistant">
                     <div className="message-content">
-                      <AuditResults result={result} />
+                      <AuditResults result={result} onImprove={handleImproveText} />
                     </div>
                   </div>
                 )}
@@ -182,7 +233,20 @@ const App: React.FC = () => {
               </div>
             </div>
           ) : (
-            <HistoryAudit audit={selectedAudit} onNewAudit={handleNewAudit} />
+            <HistoryAudit 
+              audit={selectedAudit} 
+              onNewAudit={handleNewAudit}
+              onImprove={(improvedText) => {
+                if (selectedAudit) {
+                  const updatedAudit = { ...selectedAudit, improvedText };
+                  setSelectedAudit(updatedAudit);
+                  const updatedHistory = auditHistory.map(audit =>
+                    audit.id === selectedAudit.id ? updatedAudit : audit
+                  );
+                  setAuditHistory(updatedHistory);
+                }
+              }}
+            />
           )}
         </main>
       </div>

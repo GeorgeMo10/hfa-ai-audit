@@ -19,6 +19,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   selectedAuditId,
   onNewAudit,
 }) => {
+  const handleClose = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    console.log('Sidebar: Close button clicked, isOpen:', isOpen);
+    onClose();
+  };
+
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
     const today = new Date();
@@ -44,25 +53,73 @@ const Sidebar: React.FC<SidebarProps> = ({
     return text.substring(0, maxLength) + '...';
   };
 
+  console.log('Sidebar render - isOpen:', isOpen);
+
   return (
     <>
-      {isOpen && <div className="sidebar-overlay" onClick={onClose}></div>}
-      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+      {isOpen && (
+        <div 
+          className="sidebar-overlay" 
+          onClick={(e) => {
+            console.log('Sidebar: Overlay clicked');
+            handleClose(e);
+          }}
+        ></div>
+      )}
+      <aside className={`sidebar ${isOpen ? 'open' : 'closed'}`}>
         <div className="sidebar-header">
-          <button className="new-chat-button" onClick={onNewAudit}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+          <div className="sidebar-header-top">
+            <button className="new-chat-button" onClick={onNewAudit}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              New Audit
+            </button>
+            <button 
+              className="sidebar-close-button" 
+              onClick={(e) => {
+                console.log('Sidebar: Close button clicked (direct)', e);
+                console.log('Sidebar: isOpen before close:', isOpen);
+                handleClose(e);
+                console.log('Sidebar: handleClose called');
+              }}
+              onMouseDown={(e) => {
+                console.log('Sidebar: Close button mousedown');
+                e.preventDefault();
+              }}
+              aria-label="Close sidebar"
+              type="button"
+              style={{ 
+                cursor: 'pointer',
+                pointerEvents: 'auto',
+                position: 'relative',
+                zIndex: 1001
+              }}
             >
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            New Audit
-          </button>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                pointerEvents="none"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
         </div>
         <div className="sidebar-content">
           <div className="sidebar-section">
